@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI文本检测器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: #f5f6fa;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            gap: 20px;
+        }
+
+        .input-section {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .result-section {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        textarea {
+            width: 100%;
+            height: 300px;
+            padding: 15px;
+            border: 1px dashed #ccc;
+            border-radius: 5px;
+            resize: none;
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+
+        .upload-area {
+            border: 2px dashed #4834d4;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            cursor: pointer;
+        }
+
+        .upload-area:hover {
+            background-color: #f8f9fe;
+        }
+
+        .btn {
+            background-color: #4834d4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            background-color: #3525b0;
+        }
+
+        .result-circle {
+            width: 200px;
+            height: 200px;
+            margin: 20px auto;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .circle-bg {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: #f0f0f0;
+        }
+
+        .percentage {
+            position: relative;
+            font-size: 48px;
+            color: #4834d4;
+            font-weight: bold;
+        }
+
+        .result-details {
+            margin-top: 20px;
+        }
+
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading::after {
+            content: "检测中...";
+            color: #4834d4;
+        }
+
+        h2 {
+            margin-bottom: 20px;
+            color: #2d3436;
+        }
+
+        #fileInput {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="input-section">
+            <h2>输入文本</h2>
+            <textarea id="textInput" placeholder="在此输入或粘贴要检测的文本..."></textarea>
+            <div class="upload-area" id="uploadArea">
+                <input type="file" id="fileInput" accept=".txt">
+                <span>点击或拖拽文件到此处上传</span>
+            </div>
+            <button class="btn" id="submitBtn">
+                <span>开始检测</span>
+            </button>
+        </div>
+        <div class="result-section">
+            <h2>检测结果</h2>
+            <div class="result-circle">
+                <div class="circle-bg"></div>
+                <div class="percentage">0%</div>
+            </div>
+            <p style="text-align: center; margin-bottom: 20px;">AI生成概率</p>
+            <div class="result-details">
+                <div class="result-item">
+                    <span>AI生成概率</span>
+                    <span>0%</span>
+                </div>
+                <div class="result-item">
+                    <span>人工撰写概率</span>
+                    <span>0%</span>
+                </div>
+            </div>
+            <div class="loading" id="loading"></div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const textInput = document.getElementById('textInput');
+            const fileInput = document.getElementById('fileInput');
+            const uploadArea = document.getElementById('uploadArea');
+            const submitBtn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+
+            // 文件上传处理
+            uploadArea.addEventListener('click', () => fileInput.click());
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.style.backgroundColor = '#f8f9fe';
+            });
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.style.backgroundColor = '';
+            });
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.style.backgroundColor = '';
+                const file = e.dataTransfer.files[0];
+                if (file && file.type === 'text/plain') {
+                    handleFile(file);
+                }
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    handleFile(file);
+                }
+            });
+
+            function handleFile(file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    textInput.value = e.target.result;
+                };
+                reader.readAsText(file);
+            }
+
+            // 提交检测
+            submitBtn.addEventListener('click', async () => {
+                const text = textInput.value.trim();
+                if (!text) {
+                    alert('请输入要检测的文本');
+                    return;
+                }
+
+                loading.style.display = 'block';
+                submitBtn.disabled = true;
+
+                try {
+                    const response = await fetch('/detect', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ text })
+                    });
+
+                    const result = await response.json();
+                    console.log("API返回结果:", result);  // 调试用，在控制台显示完整结果
+                    updateResult(result.probability);
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('检测失败，请重试');
+                } finally {
+                    loading.style.display = 'none';
+                    submitBtn.disabled = false;
+                }
+            });
+
+            function updateResult(probability) {
+                const percentage = Math.round(probability * 100);
+                document.querySelector('.percentage').textContent = `${percentage}%`;
+                
+                // 添加色彩提示，根据AI生成概率变化颜色
+                const percentageEl = document.querySelector('.percentage');
+                if (percentage >= 70) {
+                    percentageEl.style.color = '#e74c3c';  // 红色，高概率AI生成
+                } else if (percentage >= 30) {
+                    percentageEl.style.color = '#f39c12';  // 橙色，中等概率
+                } else {
+                    percentageEl.style.color = '#2ecc71';  // 绿色，低概率，可能是人工
+                }
+                
+                // 简化为只显示AI生成概率和人工撰写概率
+                const resultItems = document.querySelectorAll('.result-item span:last-child');
+                
+                // AI生成概率
+                resultItems[0].textContent = `${percentage}%`;
+                // 人工撰写概率
+                resultItems[1].textContent = `${100 - percentage}%`;
+                
+                // 添加结果解释
+                const humanProbability = 100 - percentage;
+                let explanation = '';
+                
+                if (percentage >= 70) {
+                    explanation = '该文本很可能是AI生成的';
+                } else if (percentage >= 30) {
+                    explanation = '该文本可能包含AI生成的内容';
+                } else {
+                    explanation = '该文本很可能是人工撰写的';
+                }
+                
+                // 添加解释文本（如果页面上有这个元素）
+                const explanationEl = document.querySelector('.result-explanation');
+                if (explanationEl) {
+                    explanationEl.textContent = explanation;
+                } else {
+                    // 如果页面上没有这个元素，创建一个
+                    const p = document.createElement('p');
+                    p.className = 'result-explanation';
+                    p.style.textAlign = 'center';
+                    p.style.marginTop = '20px';
+                    p.style.fontWeight = 'bold';
+                    p.textContent = explanation;
+                    
+                    // 将解释添加到结果详情下方
+                    document.querySelector('.result-details').after(p);
+                }
+            }
+        });
+    </script>
+</body>
+</html> 
