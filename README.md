@@ -32,6 +32,53 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+### 启动Web应用
+
+最简单的方式是直接启动Web应用：
+
+```bash
+python app.py
+```
+
+应用将会在 http://127.0.0.1:5000 启动，你可以通过浏览器访问这个地址使用系统。
+
+### 使用方法
+
+1. 在网页界面的输入框中输入或粘贴待检测的文本
+2. 或者点击上传区域，上传TXT文本文件
+3. 点击"开始检测"按钮
+4. 系统会自动分析文本并在右侧显示检测结果
+5. 检测结果包括AI生成概率和三级分类（AI生成文本、可能为AI生成、人工撰写）
+
+### 使用API
+
+本系统也提供了API接口，可以通过HTTP请求使用：
+
+```bash
+# 使用curl进行检测
+curl -X POST http://127.0.0.1:5000/detect \
+  -H "Content-Type: application/json" \
+  -d '{"text": "待检测的文本内容"}'
+
+# 检查系统状态
+curl http://127.0.0.1:5000/status
+```
+
+### 在Python中调用
+
+```python
+import requests
+import json
+
+# 执行检测
+url = "http://127.0.0.1:5000/detect"
+data = {"text": "待检测的文本内容"}
+response = requests.post(url, json=data)
+result = response.json()
+print(f"AI生成概率: {result['probability']}")
+print(f"检测结果: {result['prediction']}")
+```
+
 ### 数据集分析
 
 首先分析数据集，了解数据分布情况：
@@ -98,11 +145,21 @@ python detect.py --file sample.txt --model_path ./models/lr_model.pkl --model_ty
 python detect.py --csv dataset/AI-and-Human-Generated-Text/test.csv --column abstract --model_path ./models/bert_model.pt --model_type bert --feature_type transformer --output batch_results.json
 ```
 
-### 启动Web应用
+## 系统截图
 
-```bash
-python app.py --model_path ./models/rf_model.pkl --model_type random_forest
-```
+![AI文本检测系统界面](docs/screenshots/interface.png)
+
+## 故障排除
+
+### 常见问题
+
+1. **模型无法加载**：确保已下载模型文件到models目录，或修改app.py中的模型路径
+2. **内存不足**：降低批量处理的文本数量，或增加系统内存
+3. **检测结果不准确**：尝试调整threshold阈值，或使用更高质量的模型
+
+### 日志查看
+
+系统日志保存在`ai_detector.log`文件中，可以通过查看日志获取详细的运行信息和错误消息。
 
 ## 项目结构
 
@@ -119,8 +176,11 @@ AITextInspector/
 │       ├── train.csv
 │       └── test.csv
 ├── models/                     # 模型目录
+│   ├── ai_text/                # AI文本检测模型
+│   └── ai_text_detector/       # AI文本检测器模型
 └── src/                        # 源代码
     ├── __init__.py
+    ├── DesklibAIDetection.py   # AI检测核心实现
     ├── app/                    # Web应用模块
     ├── data_processing/        # 数据处理模块
     │   ├── __init__.py

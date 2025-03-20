@@ -1,6 +1,6 @@
 import pandas as pd
 import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoTokenizer
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_curve, roc_auc_score, precision_recall_curve, average_precision_score, precision_score, recall_score, f1_score
 import numpy as np
@@ -11,6 +11,14 @@ import os
 from datetime import datetime
 import json
 import time
+from src.utils import get_logger
+
+# 创建日志记录器
+logger = get_logger(
+    log_dir="./logs",
+    experiment_name=f"simple_train_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+    enable_tensorboard=True
+)
 
 class TextDataset(Dataset):
     def __init__(self, texts, labels, tokenizer, max_length=128):
@@ -44,13 +52,15 @@ class TextDataset(Dataset):
 
 def load_data():
     """加载数据集"""
+    logger.info("开始加载数据集...")
+    
     # 加载训练集
-    train_df = pd.read_csv('dataset/AI-and-Human-Generated-Text/train.csv')
+    train_df = pd.read_csv('../dataset/AI-and-Human-Generated-Text/train.csv')
     # 合并title和abstract
     train_df['text'] = train_df['title'] + ' ' + train_df['abstract']
     
     # 加载测试集
-    test_df = pd.read_csv('dataset/AI-and-Human-Generated-Text/test.csv')
+    test_df = pd.read_csv('../dataset/AI-and-Human-Generated-Text/test.csv')
     test_df['text'] = test_df['title'] + ' ' + test_df['abstract']
     
     # 记录数据集基本统计信息
@@ -61,11 +71,11 @@ def load_data():
         "test_class_distribution": test_df['label'].value_counts().to_dict()
     }
     
-    print("数据集统计信息:")
-    print(f"训练集样本数: {data_stats['train_samples']}")
-    print(f"测试集样本数: {data_stats['test_samples']}")
-    print(f"训练集类别分布: {data_stats['train_class_distribution']}")
-    print(f"测试集类别分布: {data_stats['test_class_distribution']}")
+    logger.info("数据集统计信息:")
+    logger.info(f"训练集样本数: {data_stats['train_samples']}")
+    logger.info(f"测试集样本数: {data_stats['test_samples']}")
+    logger.info(f"训练集类别分布: {data_stats['train_class_distribution']}")
+    logger.info(f"测试集类别分布: {data_stats['test_class_distribution']}")
 
     # 可视化类别分布
     plt.figure(figsize=(12, 5))
@@ -87,6 +97,8 @@ def load_data():
     plt.savefig('output/figures/class_distribution.png', dpi=300)
     plt.close()
     
+    logger.info("数据集加载完成，可视化图表已保存")
+    
     return (
         train_df['text'].values, train_df['label'].values,
         test_df['text'].values, test_df['label'].values,
@@ -95,7 +107,11 @@ def load_data():
 
 def train_model(model, train_loader, test_loader, device, epochs=3, output_dir='output', patience=3):
     """训练模型并记录详细结果"""
+    logger.info(f"开始训练模型，总共 {epochs} 个epoch，早停耐心值为 {patience}")
+    logger.info(f"输出目录: {output_dir}")
+    
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
+    logger.info(f"优化器: AdamW，学习率: 2e-5")
     
     # 创建结果存储目录
     os.makedirs(output_dir, exist_ok=True)
@@ -124,7 +140,7 @@ def train_model(model, train_loader, test_loader, device, epochs=3, output_dir='
     
     try:
         for epoch in range(epochs):
-            print(f'\nEpoch {epoch + 1}/{epochs}')
+            logger.info(f'\nEpoch {epoch + 1}/{epochs}')
             epoch_start_time = time.time()
             
             # 训练阶段
@@ -158,8 +174,8 @@ def train_model(model, train_loader, test_loader, device, epochs=3, output_dir='
             train_acc = accuracy_score(train_labels, train_preds)
             avg_train_loss = train_loss/len(train_loader)
             
-            print(f'Training Loss: {avg_train_loss:.4f}')
-            print(f'Training Accuracy: {train_acc:.4f}')
+            logger.info(f'Training Loss: {avg_train_loss:.4f}')
+            logger.info(f'Training Accuracy: {train_acc:.4f}')
             
             # 评估阶段
             model.eval()
@@ -189,15 +205,15 @@ def train_model(model, train_loader, test_loader, device, epochs=3, output_dir='
             test_report = classification_report(test_labels, test_preds, output_dict=True)
             test_auc = roc_auc_score(test_labels, test_probs)
             
-            print(f'Test Accuracy: {test_acc:.4f}')
-            print(f'Test AUC: {test_auc:.4f}')
-            print('\nClassification Report:')
-            print(classification_report(test_labels, test_preds))
+            logger.info(f'Test Accuracy: {test_acc:.4f}')
+            logger.info(f'Test AUC: {test_auc:.4f}')
+            logger.info('\nClassification Report:')
+            logger.info(classification_report(test_labels, test_preds))
             
             # 计算当前epoch的训练时间
             epoch_time = time.time() - epoch_start_time
             total_train_time += epoch_time
-            print(f'Epoch {epoch+1} training time: {epoch_time:.2f} seconds')
+            logger.info(f'Epoch {epoch+1} training time: {epoch_time:.2f} seconds')
             
             # 记录当前epoch的结果
             epoch_stats = {
@@ -234,7 +250,7 @@ def train_model(model, train_loader, test_loader, device, epochs=3, output_dir='
                 
                 # 保存最佳模型
                 model.save_pretrained(f'{output_dir}/best_model')
-                print(f"Saved best model with accuracy: {test_acc:.4f}")
+                logger.info(f"Saved best model with accuracy: {test_acc:.4f}")
             
             # 绘制每个epoch的混淆矩阵
             plot_confusion_matrix(test_labels, test_preds, epoch, output_dir=f'{output_dir}/figures')
@@ -252,33 +268,33 @@ def train_model(model, train_loader, test_loader, device, epochs=3, output_dir='
                         break
                 
                 if no_improvement:
-                    print(f"Early stopping at epoch {epoch + 1} - No improvement for {patience} epochs")
+                    logger.info(f"Early stopping at epoch {epoch + 1} - No improvement for {patience} epochs")
                     early_stopped = True
                     break
                     
             # 每个epoch结束提示用户可以按Ctrl+C停止训练
-            print("Training in progress... Press Ctrl+C to stop")
+            logger.info("Training in progress... Press Ctrl+C to stop")
     
     except KeyboardInterrupt:
-        print("\nTraining manually stopped by user")
+        logger.info("\nTraining manually stopped by user")
         manually_stopped = True
     
     # 训练结束后的总结
-    print("\n========== Training Completed ==========")
+    logger.info("\n========== Training Completed ==========")
     if early_stopped:
-        print(f"Early stopped at epoch {len(training_stats['epochs'])}/{epochs}")
+        logger.info(f"Early stopped at epoch {len(training_stats['epochs'])}/{epochs}")
     elif manually_stopped:
-        print(f"Manually stopped at epoch {len(training_stats['epochs'])}/{epochs}")
+        logger.info(f"Manually stopped at epoch {len(training_stats['epochs'])}/{epochs}")
     else:
-        print(f"Completed all {epochs} epochs")
+        logger.info(f"Completed all {epochs} epochs")
         
-    print(f"Total Training Time: {total_train_time:.2f} seconds")
-    print(f"Best Model (Epoch {best_epoch}):")
-    print(f"  Accuracy: {best_test_metrics['accuracy']:.4f}")
-    print(f"  Precision: {best_test_metrics['precision']:.4f}")
-    print(f"  Recall: {best_test_metrics['recall']:.4f}")
-    print(f"  F1 Score: {best_test_metrics['f1']:.4f}")
-    print(f"  AUC: {best_test_metrics['auc']:.4f}")
+    logger.info(f"Total Training Time: {total_train_time:.2f} seconds")
+    logger.info(f"Best Model (Epoch {best_epoch}):")
+    logger.info(f"  Accuracy: {best_test_metrics['accuracy']:.4f}")
+    logger.info(f"  Precision: {best_test_metrics['precision']:.4f}")
+    logger.info(f"  Recall: {best_test_metrics['recall']:.4f}")
+    logger.info(f"  F1 Score: {best_test_metrics['f1']:.4f}")
+    logger.info(f"  AUC: {best_test_metrics['auc']:.4f}")
     
     # 绘制训练过程中的指标变化
     plot_training_metrics(training_stats, output_dir=f'{output_dir}/figures')
@@ -453,80 +469,117 @@ def plot_training_metrics(training_stats, output_dir='output/figures'):
     plt.savefig(f'{output_dir}/learning_curves.png', dpi=300)
     plt.close()
 
-def analyze_misclassifications(model, test_loader, test_texts, test_labels, device, output_dir='output'):
-    """分析错误分类的样本"""
+def error_analysis(true_labels, pred_labels, texts):
+    """对错误分类的样本进行分析"""
+    logger.info("执行错误分析...")
+    
+    misclassified = []
+    for idx, (true, pred, text) in enumerate(zip(true_labels, pred_labels, texts)):
+        if true != pred:
+            misclassified.append({
+                'id': idx,
+                'true_label': true,
+                'pred_label': pred,
+                'text': text[:100] + '...' if len(text) > 100 else text
+            })
+    
+    error_stats = {
+        'total_samples': len(true_labels),
+        'misclassified_count': len(misclassified),
+        'error_rate': len(misclassified) / len(true_labels) if len(true_labels) > 0 else 0,
+        'false_positives': sum(1 for m in misclassified if m['true_label'] == 0 and m['pred_label'] == 1),
+        'false_negatives': sum(1 for m in misclassified if m['true_label'] == 1 and m['pred_label'] == 0)
+    }
+    
+    # 保存错误分类的样本
+    misclassified_df = pd.DataFrame(misclassified)
+    if not misclassified_df.empty:
+        os.makedirs('output/error_analysis', exist_ok=True)
+        misclassified_df.to_csv('output/error_analysis/misclassified_samples.csv', index=False)
+        logger.info(f"已将{len(misclassified)}个错误分类样本保存到 output/error_analysis/misclassified_samples.csv")
+    
+    # 创建混淆矩阵
+    cm = confusion_matrix(true_labels, pred_labels)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False,
+                xticklabels=['Human', 'AI'],
+                yticklabels=['Human', 'AI'])
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    plt.title('Confusion Matrix')
+    
+    os.makedirs('output/figures', exist_ok=True)
+    plt.savefig('output/figures/confusion_matrix.png')
+    logger.info("混淆矩阵已保存到 output/figures/confusion_matrix.png")
+    
+    # 计算并显示每个类别的指标
+    report = classification_report(true_labels, pred_labels, output_dict=True)
+    logger.info("\n每个类别的性能指标:")
+    logger.info(f"Human类别 - Precision: {report['0']['precision']:.4f}, Recall: {report['0']['recall']:.4f}, F1: {report['0']['f1-score']:.4f}")
+    logger.info(f"AI类别 - Precision: {report['1']['precision']:.4f}, Recall: {report['1']['recall']:.4f}, F1: {report['1']['f1-score']:.4f}")
+    
+    return misclassified, error_stats
+
+def analyze_misclassifications(model, tokenizer, X_test, y_test, device='cpu'):
+    """深入分析错误分类的样本"""
+    logger.info("开始分析错误分类样本...")
+    
     model.eval()
     all_preds = []
     all_probs = []
-    all_indices = []
+    
+    # 使用较小的批次以防止内存溢出
+    batch_size = 16
+    dataset = TextDataset(X_test, y_test, tokenizer, max_length=512)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     
     with torch.no_grad():
-        for i, batch in enumerate(test_loader):
+        for batch in tqdm(dataloader, desc='Analyzing'):
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
             
-            outputs = model(
-                input_ids=input_ids,
-                attention_mask=attention_mask
-            )
-            
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
             probs = torch.softmax(outputs.logits, dim=1)
-            preds = torch.argmax(outputs.logits, dim=1).cpu().numpy()
+            preds = torch.argmax(outputs.logits, dim=1)
             
-            # 记录批次中每个样本的索引
-            batch_size = input_ids.size(0)
-            batch_indices = list(range(i * test_loader.batch_size, min((i + 1) * test_loader.batch_size, len(test_texts))))
-            
-            all_preds.extend(preds)
+            all_preds.extend(preds.cpu().numpy())
             all_probs.extend(probs[:, 1].cpu().numpy())
-            all_indices.extend(batch_indices)
     
-    # 找出错误分类的样本
-    misclassified = []
-    for idx, (pred, prob, true_label) in enumerate(zip(all_preds, all_probs, test_labels)):
-        if pred != true_label:
-            text_idx = all_indices[idx]
-            misclassified.append({
-                'index': text_idx,
-                'text': test_texts[text_idx],
-                'true_label': int(true_label),
-                'predicted_label': int(pred),
-                'confidence': float(prob if pred == 1 else 1 - prob)
-            })
+    # 计算性能指标
+    accuracy = accuracy_score(y_test, all_preds)
+    auc = roc_auc_score(y_test, all_probs)
     
-    # 按置信度排序
-    misclassified.sort(key=lambda x: x['confidence'], reverse=True)
+    logger.info(f"全量测试集性能: 准确率: {accuracy:.4f}, AUC: {auc:.4f}")
     
-    # 保存错误分类结果
-    os.makedirs(output_dir, exist_ok=True)
-    with open(f'{output_dir}/misclassified_samples.json', 'w') as f:
-        json.dump(misclassified, f, indent=2)
+    # 错误分析
+    misclassified, error_stats = error_analysis(y_test, all_preds, X_test)
     
-    # 对错误分类进行统计
-    error_stats = {
-        'total_samples': len(test_labels),
-        'misclassified_count': len(misclassified),
-        'error_rate': len(misclassified) / len(test_labels),
-        'false_positives': sum(1 for item in misclassified if item['true_label'] == 0 and item['predicted_label'] == 1),
-        'false_negatives': sum(1 for item in misclassified if item['true_label'] == 1 and item['predicted_label'] == 0)
-    }
-    
-    # 保存错误统计
-    with open(f'{output_dir}/error_analysis.json', 'w') as f:
-        json.dump(error_stats, f, indent=2)
-    
-    # 打印错误分析结果
-    print("\n========== Error Analysis ==========")
-    print(f"Total Samples: {error_stats['total_samples']}")
-    print(f"Misclassified Count: {error_stats['misclassified_count']}")
-    print(f"Error Rate: {error_stats['error_rate']:.4f}")
-    print(f"False Positives (Human texts classified as AI): {error_stats['false_positives']}")
-    print(f"False Negatives (AI texts classified as Human): {error_stats['false_negatives']}")
+    # 找出置信度最高的错误分类样本
+    if misclassified:
+        # 为错误分类的样本添加概率信息
+        for i, m in enumerate(misclassified):
+            sample_idx = m['id']
+            m['confidence'] = all_probs[sample_idx]
+        
+        # 按置信度排序
+        misclassified.sort(key=lambda x: abs(x['confidence'] - 0.5), reverse=True)
+        
+        # 显示最有信心的5个错误预测
+        logger.info("\n置信度最高的误分类样本:")
+        confident_errors = misclassified[:5]
+        for i, sample in enumerate(confident_errors):
+            true_label = "Human" if sample['true_label'] == 0 else "AI"
+            pred_label = "Human" if sample['pred_label'] == 0 else "AI"
+            logger.info(f"样本 {i+1}: 真实标签: {true_label}, 预测标签: {pred_label}, 置信度: {sample['confidence']:.4f}")
+            logger.info(f"文本片段: {sample['text'][:200]}...")
+            logger.info("-"*50)
     
     return misclassified, error_stats
 
 def plot_final_evaluation(best_metrics, test_loader, model, device, output_dir='output/figures'):
     """生成最终模型评估的详细可视化图表"""
+    logger.info("生成最终评估可视化图表...")
+    
     # 获取测试集结果
     model.eval()
     all_preds = []
@@ -577,6 +630,7 @@ def plot_final_evaluation(best_metrics, test_loader, model, device, output_dir='
     plt.tight_layout()
     plt.savefig(f'{output_dir}/final_confusion_matrix.png', dpi=300)
     plt.close()
+    logger.info(f"混淆矩阵已保存至 {output_dir}/final_confusion_matrix.png")
     
     # 2. ROC曲线与PR曲线对比
     plt.figure(figsize=(16, 6))
@@ -626,6 +680,7 @@ def plot_final_evaluation(best_metrics, test_loader, model, device, output_dir='
     plt.tight_layout()
     plt.savefig(f'{output_dir}/final_roc_pr_curves.png', dpi=300)
     plt.close()
+    logger.info(f"ROC和PR曲线已保存至 {output_dir}/final_roc_pr_curves.png")
     
     # 3. 阈值分析图 - 根据不同阈值展示准确率、精确率、召回率和F1值
     plt.figure(figsize=(15, 10))
@@ -689,6 +744,7 @@ def plot_final_evaluation(best_metrics, test_loader, model, device, output_dir='
     plt.tight_layout()
     plt.savefig(f'{output_dir}/threshold_analysis.png', dpi=300)
     plt.close()
+    logger.info(f"阈值分析图已保存至 {output_dir}/threshold_analysis.png")
     
     # 4. 组合性能图 - 在一张图上显示所有指标
     plt.figure(figsize=(12, 8))
@@ -710,6 +766,7 @@ def plot_final_evaluation(best_metrics, test_loader, model, device, output_dir='
     plt.tight_layout()
     plt.savefig(f'{output_dir}/combined_metrics_vs_threshold.png', dpi=300)
     plt.close()
+    logger.info(f"组合性能图已保存至 {output_dir}/combined_metrics_vs_threshold.png")
     
     # 5. 预测概率分布图
     plt.figure(figsize=(12, 5))
@@ -744,6 +801,7 @@ def plot_final_evaluation(best_metrics, test_loader, model, device, output_dir='
     plt.tight_layout()
     plt.savefig(f'{output_dir}/prediction_probability_distribution.png', dpi=300)
     plt.close()
+    logger.info(f"预测概率分布图已保存至 {output_dir}/prediction_probability_distribution.png")
     
     # 记录最终的评估结果
     best_threshold_info = {
@@ -753,6 +811,9 @@ def plot_final_evaluation(best_metrics, test_loader, model, device, output_dir='
     
     with open(f'{output_dir[:-8]}/threshold_analysis.json', 'w') as f:
         json.dump(best_threshold_info, f, indent=2)
+    
+    logger.info(f"最佳阈值分析: ROC最佳阈值 = {optimal_threshold:.4f}, F1最佳阈值 = {best_f1_threshold:.4f}")
+    logger.info("所有评估图表生成完成")
     
     return best_threshold_info
 
@@ -772,11 +833,11 @@ def main():
     
     # 设置设备
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f'Using device: {device}')
+    logger.info(f'Using device: {device}')
     
     # 使用更轻量级的模型
     try:
-        print("Using lightweight model: distilbert-base-uncased")
+        logger.info("Using lightweight model: distilbert-base-uncased")
         from transformers import DistilBertForSequenceClassification
         model_name = "distilbert-base-uncased"
         tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -785,10 +846,10 @@ def main():
             num_labels=2,
             problem_type="single_label_classification"
         ).to(device)
-        print("Successfully loaded lightweight model!")
+        logger.info("Successfully loaded lightweight model!")
     except Exception as e:
-        print(f"Error loading lightweight model: {e}")
-        print("Trying alternative model: bert-base-uncased")
+        logger.info(f"Error loading lightweight model: {e}")
+        logger.info("Trying alternative model: bert-base-uncased")
         
         from transformers import BertForSequenceClassification
         model_name = "bert-base-uncased"
@@ -801,13 +862,13 @@ def main():
     
     # 获取和打印模型参数数量
     model_size = sum(p.numel() for p in model.parameters())
-    print(f'Model parameters: {model_size:,}')
+    logger.info(f'Model parameters: {model_size:,}')
     
     # 加载数据
-    print('Loading dataset...')
+    logger.info('Loading dataset...')
     X_train, y_train, X_test, y_test, data_stats = load_data()
     
-    print(f"Training with full dataset: {len(X_train)} training samples and {len(X_test)} test samples")
+    logger.info(f"Training with full dataset: {len(X_train)} training samples and {len(X_test)} test samples")
     
     # 创建数据集
     train_dataset = TextDataset(X_train, y_train, tokenizer)
@@ -819,7 +880,7 @@ def main():
     test_loader = DataLoader(test_dataset, batch_size=batch_size)
     
     # 训练模型 - 增加epoch数量并添加早停
-    print('Starting model training...')
+    logger.info('Starting model training...')
     model, training_summary, best_test_metrics = train_model(
         model, 
         train_loader, 
@@ -831,7 +892,7 @@ def main():
     )
     
     # 生成最终评估图表
-    print('Generating detailed evaluation charts...')
+    logger.info('Generating detailed evaluation charts...')
     threshold_info = plot_final_evaluation(
         best_test_metrics,
         test_loader,
@@ -841,14 +902,13 @@ def main():
     )
     
     # 分析错误分类的样本
-    print('Analyzing misclassifications...')
+    logger.info('Analyzing misclassifications...')
     misclassified, error_stats = analyze_misclassifications(
         model, 
-        test_loader, 
+        tokenizer, 
         X_test, 
         y_test, 
-        device, 
-        output_dir=output_dir
+        device
     )
     
     # 保存完整的实验配置和结果摘要
@@ -879,12 +939,12 @@ def main():
         json.dump(experiment_summary, f, indent=2)
     
     # 保存模型和分词器
-    print(f'Saving model to {output_dir}/final_model')
+    logger.info(f'Saving model to {output_dir}/final_model')
     model.save_pretrained(f'{output_dir}/final_model')
     tokenizer.save_pretrained(f'{output_dir}/final_model')
     
-    print(f'All results saved to {output_dir}')
-    print('Training completed!')
+    logger.info(f'All results saved to {output_dir}')
+    logger.info('Training completed!')
 
 if __name__ == '__main__':
     main() 
